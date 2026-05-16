@@ -15,4 +15,6 @@
 #define G_QUESTION_PATTERN  0x0e89844u   // '?'
 #define G_HASH_PATTERN      0x0afabeau   // '#'
 
+#define ___ulog2_app(x) 0x3f800000u | ((x) >> 9u)
+
 #endif
