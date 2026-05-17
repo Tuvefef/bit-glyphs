@@ -6,9 +6,8 @@ in vec2 atexcoord;
 
 layout(location = 0) out vec4 color;
 
-#define BIT_SIZE 7.0 //[4.0 4.5 5.0 5.5 6.0 6.5 7.0 7.5 8.0 8.5 9.0 9.5 10.0]
-
-#include "common/bits.h"
+#include "bits/bits.h"
+#include "inc/inc.glsl"
 
 float luminance(vec3 c) 
 {
@@ -39,7 +38,7 @@ uint uxor32(uint s)
 
 float fxor32(uint s)
 {
-    return uintBitsToFloat(___ulog2_app(uxor32(s))) - 1.0;
+    return uintBitsToFloat(ULOG2_APP(uxor32(s))) - 1.0;
 }
 
 uint initSeed(vec2 coord)
@@ -56,22 +55,14 @@ void main()
     vec2 block = floor(apixel / BIT_SIZE);
     vec2 blockCoord = block * BIT_SIZE;
 
-    vec3 avg = vec3(0.0);
-    float samples = 0.0;
-
-    for(int x = 0; x < int(BIT_SIZE); x++)
-        for(int y = 0; y < int(BIT_SIZE); y++)
-        {
-            vec2 uv = (blockCoord + vec2(x, y) + 0.5) / resolution;
-            avg += texture(colortex0, uv).rgb;
-            samples += 1.0;
-        }
-
-    avg /= samples;
+    float mipLevel = log2(BIT_SIZE);
+    vec3 avg = textureLod(colortex0, blockCoord / resolution + 0.5 / resolution, mipLevel).rgb;
 
     float noise = fxor32(initSeed(block));
     float l = luminance(avg) + (noise - 0.5) * 0.03;
+#ifdef SMOOTH_LUMA
     l = l * l * (3.0 - 2.0 * l);
+#endif
 
     uint glyph = G_VOID_PATTERN;
 
@@ -89,12 +80,36 @@ void main()
     local = (local - padding) / (1.0 - 2.0 * padding);
     local = clamp(local, vec2(0.0), vec2(1.0));
 
-    int bit = gglyphBit25(glyph, local);
-    float density = float(bit);
-    vec3 bg_color = avg * 0.08;
-    vec3 fg_color = avg * 1.25;
+    uint flag = FLAG(glyph);
+    uint pure = PURE(glyph);
 
-    vec3 final = mix(bg_color, fg_color, density);
+    int bit = gglyphBit25(pure, local);
+
+#ifdef SATURATE
+    flag |= SATURATE_F;
+#endif
+#ifdef CUSTOM_COLOR
+    flag |= COLOR_F;
+#endif
+
+    vec3 setColor = avg;
+    if (FSATURATE(flag) != 0u)
+    {
+        vec3 gray = vec3(luminance(avg));
+        setColor = mix(gray, avg, 1.4);
+    }
+
+    if (FCOLOR(flag) != 0u)
+    {
+        setColor = vec3(RED, GREEN, BLUE);
+    }
+
+    float density = float(bit);
+    vec3 bgColor = avg * 0.08;
+
+    vec3 fgColor = clamp(setColor * 1.3, 0.0, 1.0);
+
+    vec3 final = mix(bgColor, fgColor, density);
 
     color = vec4(clamp(final, 0.0, 1.0), 1.0);
 }
